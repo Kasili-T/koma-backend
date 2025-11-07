@@ -1,4 +1,4 @@
-services:
+﻿services:
   - type: web
     name: koma-backend
     env: python
@@ -14,11 +14,11 @@ services:
       - key: EMAIL_HOST_PASSWORD
         value: your-app-password
     staticPublishPath: staticfiles
-ECHO is on.
+
   - type: redis
     name: redis
     ipAllowList: []
-ECHO is on.
+
 databases:
   - name: koma_db
     plan: free
