@@ -1,8 +1,6 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from django.contrib.auth.models import User
-from .models import ChatRoom, Message
 
 # Keep track of online users per room
 online_users = {}
@@ -13,7 +11,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.room_group_name = f"chat_{self.room_id}"
         self.user = self.scope["user"]
 
-        # Join group
+        # Join room group
         await self.channel_layer.group_add(
             self.room_group_name,
             self.channel_name
@@ -23,7 +21,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Add user to online list
         if self.room_id not in online_users:
             online_users[self.room_id] = set()
-        online_users[self.room_id].add(self.user.username)
+        if self.user.is_authenticated:
+            online_users[self.room_id].add(self.user.username)
 
         # Broadcast updated presence
         await self.channel_layer.group_send(
@@ -35,10 +34,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def disconnect(self, close_code):
-        # Remove user from online list
-        if self.room_id in online_users:
+        if self.room_id in online_users and self.user.is_authenticated:
             online_users[self.room_id].discard(self.user.username)
-
             # Broadcast updated presence
             await self.channel_layer.group_send(
                 self.room_group_name,
@@ -60,11 +57,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         if msg_type == "chat":
             message = data["message"]
-
-            # Save message to DB
             await self.save_message(self.room_id, self.user, message)
-
-            # Broadcast message
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -73,7 +66,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "username": self.user.username,
                 }
             )
-
         elif msg_type == "typing":
             await self.channel_layer.group_send(
                 self.room_group_name,
@@ -106,5 +98,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def save_message(self, room_id, user, message):
+        # Lazy import here to prevent AppRegistryNotReady
+        from .models import ChatRoom, Message
+
         room = ChatRoom.objects.get(id=room_id)
         return Message.objects.create(room=room, sender=user, content=message)
